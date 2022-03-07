@@ -1,0 +1,157 @@
+---
+title: "Conversão dbc para csv"
+author: "Mário Olímpio de Menezes"
+date: "21/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(foreign)
+library(read.dbc)
+library(data.table)
+library(parallel)
+```
+
+
+```{r echo = FALSE}
+diretorioCNES <- "/home/mario/datasets/datasus.gov.br/CNES/ftp_200508/dissemin/publicos/CNES/200508_/Dados/"
+```
+
+Para não travar a máquina, vou usar apenas 3 (notebook) cores.
+
+A função `makeCluster` é utilizada para criar o nosso cluster virtual de processamento paralelo.
+
+```{r}
+numCores <- 3
+cluster <- makeCluster(numCores)
+```
+
+
+
+
+```{r}
+library(doParallel)
+```
+
+
+```{r}
+doParallel::registerDoParallel(cores = numCores)
+```
+
+
+
+
+## Estratégia para usar o Spark
+
+Criar um arquivo por Estado para cada ano: 27 estados (+ DF)
+
+```{r}
+PREF <- "DC"  
+estados <- c("AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR","RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO" )
+#estados <- c( "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR","RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO" )
+anos <- c( "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19")
+meses <- c("01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12")
+```
+
+```{r}
+diretorio <- paste0(diretorioCNES, PREF,"/")
+```
+```{r eval = FALSE}
+estados <- c("SE", "SP", "TO" )
+anos <- c("09","10","11")
+```
+
+```{r}
+arqs <- NULL
+arqst <- NULL
+arqst2 <- NULL
+caminho <- NULL
+nomearquivocsv <- NULL
+```
+
+
+```{r}
+for(UF in estados) {
+#  if (UF %in% c("AC","AL", "AP")) {
+#    next
+#  }
+  MESES <- "(01|02|03|04|05|06|07|08|09|10|11|12)"
+  for(ANO in anos) {
+ #   if (UF == "AC" & ANO %in% c("11","12","13","14")) {
+#      next
+ #   }
+    arquivos <- list.files(diretorio, paste0(PREF,UF,ANO,MESES,".*.dbc"))
+    fNames <- lapply(arquivos, function(x) {paste0(diretorio,x)})
+    # tamanho do Chunk igual ao número de cores
+    sChunk <- numCores
+    N <- length(fNames)
+    
+    if(length(fNames) > sChunk) {
+      nChunks <- floor(length(fNames)/sChunk)
+    } else {
+      nChunks <- 1
+      sChunk <- length(fNames)
+    }
+    rChunks <- length(fNames) %% sChunk
+    if((sChunk * nChunks) - length(fNames) > sChunk ) {
+      nChunks = nChunks + 1
+    }
+    arqs2 <- NULL
+    arqst <- list()
+    
+    foreach(j = 0:(nChunks - 1)) %do% {
+      start <- j * sChunk + 1
+      end <- (j + 1) * sChunk
+      arqs <- mclapply(fNames[start:end], read.dbc, mc.cores = numCores)
+      arqst <- append(arqst, arqs)
+      arqs <- NULL
+    }
+    if (rChunks != 0) {
+      start <- nChunks * sChunk + 1
+      end <- length(fNames)
+      arqs <- mclapply(fNames[start:end], read.dbc, mc.cores = numCores)
+      arqst <- append(arqst, arqs)
+    }
+    arqs2 <-
+      foreach(I = 1:length(fNames)) %dopar% {
+        if(is.data.frame(arqst[[I]])) {
+        f1 <- arqst[[I]]
+        estado <- substr(arquivos[I], 3, 4)
+        ano <- substr(arquivos[I], 5, 6)
+        mes <- substr(arquivos[I], 7, 8)
+        ano <- as.numeric(paste0("20", ano))
+        f1 <-
+          mutate(f1,
+                 ESTADO = estado,
+                 ANO = ano,
+                 MES = mes) %>%
+          {
+            if("NAT_JUR" %in% names(.)) select(., -NAT_JUR) else .
+          }
+        }
+        else {
+          next
+        }
+      }
+    #arqst <- NULL
+    X <- data.table::rbindlist(arqs2, fill=TRUE) # bind_rows(apacs) %>% arrange(ESTADO,ANO,MES)
+    assign("cnes_df",X)
+    rm(X)
+    rm(arqs2)
+    caminho = paste0(diretorio,"CSVs")
+    nomearquivocsv = paste0(PREF,UF,"_20",ANO,".csv")
+    fwrite(cnes_df,paste(caminho,nomearquivocsv,sep="/"))
+    rm(cnes_df)
+  }
+  
+}
+```
+
+```{r}
+stopImplicitCluster()
+```

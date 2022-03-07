@@ -1,0 +1,143 @@
+---
+title: "Investigando os dados da base CNES"
+author: "Mário Olímpio de Menezes"
+date: "28/12/2021"
+output: 
+  html_document: 
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+# Leitura do Arquivo
+
+Carregando as bibliotecas do pacote *tidyverse*
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+tbEstabelecimento201802 <- read_delim("/datahome/mario/datasets/datasus.gov.br/CNES/201802/tbEstabelecimento201802.csv", 
+                                      delim = ";", escape_double = FALSE, col_types = cols(CO_UNIDADE = col_character(), 
+                                      CO_CNES = col_character(), CO_CEP = col_character()), trim_ws = TRUE)
+```
+Dados complementares do endereço
+
+```{r}
+rlEstabEndCompl201802 <- read_delim("/datahome/mario/datasets/datasus.gov.br/CNES/201802/rlEstabEndCompl201802.csv", 
+                                    delim = ";", escape_double = FALSE, col_types = cols(CO_UNIDADE = col_character()), 
+                                    trim_ws = TRUE)
+```
+
+
+# Exploração
+
+## Seleção de algumas colunas
+
+```{r}
+cols_to_keep <- c("CO_UNIDADE","CO_CNES","CO_CEP","CO_ATIVIDADE","TP_UNIDADE","NO_LOGRADOURO","NU_ENDERECO","NO_BAIRRO")
+Estab201802 <- select(tbEstabelecimento201802, all_of(cols_to_keep))
+```
+
+```{r}
+cols_to_keep2 <- c("CO_UNIDADE", "CO_CEP","CO_MUNICIPIO")
+EstabCompl201802 <- select(rlEstabEndCompl201802, all_of(cols_to_keep2))
+```
+
+
+## Só farmácias (TP_UNIDADE = 43)
+
+```{r}
+Farmacias201802 <- Estab201802 %>% filter(TP_UNIDADE == "43")
+FarmaciaCompl201802 <- filter(EstabCompl201802, CO_UNIDADE %in% Farmacias201802$CO_UNIDADE)
+```
+
+```{r}
+library(skimr)
+skim(Farmacias201802)
+```
+
+Parece que temos o endereço de praticamente todas as farmácias.
+
+## Obtendo coordenadas lat long a partir do CEP
+
+Se vc utiliza o Python, então esse tutorial vai te ajudar:
+
+https://cursos.alura.com.br/forum/topico-encontar-lat-long-por-cep-143788
+
+Eu vou fazer aqui mesmo pelo R, então vou utilizar os pacotes equivalentes.
+
+Para pegar o endereço a partir do CEP vou utilizar o ViaCEP:
+https://viacep.com.br/
+
+Utilização:
+JSON
+URL: viacep.com.br/ws/01001000/json/
+UNICODE: viacep.com.br/ws/01001000/json/unicode/
+
+    {
+      "cep": "01001-000",
+      "logradouro": "Praça da Sé",
+      "complemento": "lado ímpar",
+      "bairro": "Sé",
+      "localidade": "São Paulo",
+      "uf": "SP",
+      "ibge": "3550308",
+      "gia": "1004",
+      "ddd": "11",
+      "siafi": "7107"
+    }
+        
+Vou utilizar o pacote `jsonlite` para fazer o parse no JSON retornado.
+
+Com o endereço, vou utilizar o pacote `tidygeocoder`
+
+
+```{r}
+library(curl)
+library(tidygeocoder)
+library(jsonlite)
+```
+
+Vou selecionar 10 farmácias aleatoriamente para pegar os dados de lat,long
+
+```{r}
+FarmSelecao <- slice_sample(Farmacias201802, n = 10)
+```
+
+```{r}
+map(list(FarmSelecao$CO_CEP), curl(url = paste0("viacep.com.br/ws/",.x,"/json")))
+```
+
+```{r}
+lapply(FarmSelecao, function(x) curl(url = paste0("viacep.com.br/ws/",x$,"/json")))
+```
+
+Sintaxe do tidygeocoder:
+
+```
+# create a dataframe with addresses
+some_addresses <- tibble::tribble(
+~name,                  ~addr,
+"White House",          "1600 Pennsylvania Ave NW, Washington, DC",
+"Transamerica Pyramid", "600 Montgomery St, San Francisco, CA 94111",     
+"Willis Tower",         "233 S Wacker Dr, Chicago, IL 60606"                                  
+)
+
+# geocode the addresses
+lat_longs <- some_addresses %>%
+  geocode(addr, method = 'osm', lat = latitude , long = longitude)
+#> Passing 3 addresses to the Nominatim single address geocoder
+```
+
+
+```{r}
+select(FarmSelecao, street=NO_LOGRADOURO,city=)
+```
+

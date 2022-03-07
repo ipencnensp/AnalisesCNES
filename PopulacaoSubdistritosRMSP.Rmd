@@ -1,0 +1,58 @@
+---
+title: "População Regiões IBGE RMSP"
+author: "Mário O. de Menezes"
+date: "05/03/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("~/docs/estudos/analytics/AnalisesCNES")
+```
+
+```{r}
+library(readxl)
+RMSPSantos <- read_excel("./dados/Base_informaçΣes_setores2010_sinopse_SP_RM_S╞o_Paulo_Santos.xls")
+```
+```{r}
+library(tidyverse, warn.conflicts = FALSE)
+library(knitr)
+```
+Selecionando apenas colunas de interesse e somente município de São Paulo.
+
+```{r}
+rmsp <- select(RMSPSantos, c(1:20,34)) %>% filter(Cod_municipio == 3550308)
+```
+
+Sumarizando por subdistrito
+
+```{r}
+rmsp %>% group_by(Nome_do_subdistrito) %>% summarise(Pop = sum(as.integer(V014))) %>% arrange(desc(Pop)) -> rmsp_subdis
+rmsp_subdis %>% summarise(Pop = sum(Pop)) %>% mutate(Nome_do_subdistrito = "TOTAL")  %>% bind_rows(rmsp_subdis) %>% select(Subdistrito = Nome_do_subdistrito, `População`=Pop) %>% kable()
+```
+
+
+
+Agora com os dados da Prefeiturad e SP
+
+```{r}
+projpoprmsp <- read_excel("./dados/7_populacao_censitaria_e_projecoes_populac_2008_10573_nota.xls", 
+     skip = 4, n_max = 108)
+```
+
+```{r}
+projpopregioes <- projpoprmsp %>% filter(Distritos %in% c("MSP", "CENTRO", "LESTE", "Leste 1", "Leste 2", "NORTE", "Norte 1", "Norte 2", "OESTE", "SUL", "Sul 1", "Sul 2"))
+```
+
+```{r}
+projpopdistritos <- projpoprmsp %>% filter(!Distritos %in% c("MSP", "CENTRO", "LESTE", "Leste 1", "Leste 2", "NORTE", "Norte 1", "Norte 2", "OESTE", "SUL", "Sul 1", "Sul 2")) %>% select(Distritos, `2017`:`2020`)
+```
+
+
+```{r}
+projpopdist_long <- pivot_longer(projpopdistritos, cols = 2:5, names_to = "Ano", values_to = "Pop")
+```
+
