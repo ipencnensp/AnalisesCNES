@@ -1,0 +1,86 @@
+---
+title: "CNES - Equipamentos"
+author: "Mário Olímpio de Menezes"
+date: "11/03/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Exploração dos dados CNES - Equipamentos
+
+```{r}
+library(tidyverse)
+library(read.dbc)
+```
+
+```{r echo = FALSE}
+diretorioCNES <- "/home/mario/datasets/datasus.gov.br/CNES/ftp_200508/dissemin/publicos/CNES/200508_/Dados/"
+```
+
+```{r}
+arquivo <- paste0(diretorioCNES, "EQ/EQMG1905.dbc")
+eqmg1905 <- read.dbc(arquivo)
+```
+
+```{r}
+tbEquipamento201905 <- read_delim("~/datasets/datasus.gov.br/CNES/201905/tbEquipamento201905.csv",   ";", escape_double = FALSE, trim_ws = TRUE)
+```
+
+```{r}
+eqmg1905 <- left_join(eqmg1905, select(tbEquipamento201905, CO_EQUIPAMENTO, DS_EQUIPAMENTO), by = c("CODEQUIP" = "CO_EQUIPAMENTO"))
+```
+
+```{r}
+equiptos <- c("Gama Camara","PET/CT","Ressonancia Magnetica","Tomógrafo Computadorizado")
+```
+
+```{r}
+eqmg1905 %>% 
+  filter(DS_EQUIPAMENTO %in% equiptos) %>%
+  group_by(DS_EQUIPAMENTO) %>%
+  count(wt=QT_EXIST)
+```
+
+
+Pelo site do DATASUS (`http://tabnet.datasus.gov.br/cgi/deftohtm.exe?cnes/cnv/equipoMG.def`), usando o TabNET obtive os seguintes números:
+
+```
+Município	GAMA CAMARA	 TOMÓGRAFO COMPUTADORIZADO	 RESSONANCIA MAGNETICA	PET/CT	Total
+TOTAL	       77	           528	                           253	             5	   863
+```
+
+Agora usando a base de dados mensal do CNES (`BASE_DE_DADOS_CNES_201905.ZIP`)
+
+```{r}
+rlEstabEquipamento201905 <- read_delim("~/datasets/datasus.gov.br/CNES/201905/rlEstabEquipamento201905.csv",  ";", escape_double = FALSE, trim_ws = TRUE)
+```
+```{r}
+rlEstabEquipamento201905 <- left_join(rlEstabEquipamento201905, select(tbEquipamento201905, CO_EQUIPAMENTO, DS_EQUIPAMENTO), by = "CO_EQUIPAMENTO")
+```
+
+```{r}
+rlEstabEquipamento201905 %>%
+  filter(DS_EQUIPAMENTO %in% equiptos) %>%
+  group_by(DS_EQUIPAMENTO) %>%
+  count(wt=QT_EXISTENTE)
+```
+
+Usando o TabNET, para o Brasil todo, obtive estes dados; há alguma diferença nos totais ... preciso inspecionar mais para descobrir o que ocorre.
+```
+UF	  GAMA CAMARA	 TOMÓGRAFO COMPUTADORIZADO  RESSONANCIA MAGNETICA	 PET/CT	 Total
+TOTAL	    766	           4.973	                      2.681	            79	  8.499
+```
+
+Vou retirar a ponderação pela variável `QT_EXISTENTE`:
+
+```{r}
+rlEstabEquipamento201905 %>%
+  filter(DS_EQUIPAMENTO %in% equiptos) %>%
+  group_by(DS_EQUIPAMENTO) %>%
+  count()
+```
+
+
